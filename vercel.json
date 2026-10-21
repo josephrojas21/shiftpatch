@@ -1,0 +1,1 @@
+{ "regions": ["iad1"], "crons": [{ "path": "/api/jobs/email", "schedule": "0 12 * * *" }] }
