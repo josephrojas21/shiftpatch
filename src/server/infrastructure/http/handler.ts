@@ -52,7 +52,7 @@ export async function handle(req: NextRequest) {
     if (
       response.ok &&
       req.method === 'POST' &&
-      /^\/api\/(?:shifts\/[^/]+\/(?:claim|cancel)|timesheets\/[^/]+\/review)\/?$/.test(
+      /^\/api\/(?:shifts\/[^/]+\/(?:claim|cancel)|timesheets\/[^/]+\/(?:submit|review))\/?$/.test(
         new URL(req.url).pathname,
       )
     )
