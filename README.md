@@ -1,31 +1,131 @@
 # ShiftPatch
 
-Healthcare shift coordination for nurses, staffing agencies and operations administrators. TypeScript/Next.js application with a hexagonal backend and PostgreSQL persistence. This trial deployment uses synthetic records only.
+A demo for agencies to publish nursing shifts, nurses to claim them, and administrators to review coverage, credentials and hours.
 
-## Run locally
+[Live application](https://shiftpatch-iota.vercel.app/) · [Founder demo](https://www.loom.com/share/04e090279fe34931a74d666fe1d46173)
 
-Requirements: Node 22+, npm, PostgreSQL 17 (Docker recommended).
+## Start locally from scratch
+
+You need **Node.js 22.13 or newer**, **npm**, **Git**, and **Docker** running. The steps below use a local PostgreSQL database; no Vercel, Neon, Resend or PostHog account is needed to start the core application.
+
+### 1. Download and install
 
 ```sh
+git clone https://github.com/josephrojas21/shiftpatch.git
+cd shiftpatch
 npm ci
+```
+
+### 2. Start PostgreSQL
+
+```sh
+docker run --name shiftpatch-db \
+  -e POSTGRES_USER=shiftpatch \
+  -e POSTGRES_PASSWORD=local-demo-only \
+  -e POSTGRES_DB=shiftpatch_dev \
+  -p 127.0.0.1:55433:5432 \
+  -v shiftpatch-local-data:/var/lib/postgresql/data \
+  -d postgres:17-alpine
+```
+
+Wait until this command says **accepting connections**:
+
+```sh
+docker exec shiftpatch-db pg_isready -U shiftpatch -d shiftpatch_dev
+```
+
+The password above is only for this local demo database. The Docker volume preserves your data between restarts. On subsequent runs, use `docker start shiftpatch-db` instead of creating it again.
+
+### 3. Configure local variables
+
+```sh
 cp .env.example .env.local
-# Set DATABASE_URL, DATABASE_URL_UNPOOLED and a random AUTH_SECRET (32+ chars).
+```
+
+Open `.env.local` and set these values:
+
+```dotenv
+DATABASE_URL=postgresql://shiftpatch:local-demo-only@127.0.0.1:55433/shiftpatch_dev
+DATABASE_URL_UNPOOLED=postgresql://shiftpatch:local-demo-only@127.0.0.1:55433/shiftpatch_dev
+AUTH_SECRET=replace-with-a-random-value-generated-below
+```
+
+Generate a signing secret, then paste the output as the `AUTH_SECRET` value:
+
+```sh
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+Leave the other variables blank for now. `.env.local` is ignored by Git; never commit it. If it already exists, preserve your existing configuration rather than overwriting it.
+
+### 4. Create tables and demo records
+
+```sh
 npm run db:migrate
 npm run db:seed
+```
+
+These commands use your local database. The seed inserts missing records without resetting existing records.
+
+### 5. Start the application
+
+```sh
 npm run dev
 ```
 
-Use a dedicated local database. The seed inserts missing records and never overwrites existing data. Do not reset the public demo to run tests. Database migrations use the unpooled connection; application traffic uses the pooled URL on Neon.
+Open **http://localhost:3000** and sign in with an account below. Stop the application with `Ctrl+C`. For later sessions, start Docker and run `npm run dev`; migrations and seed do not need to be repeated unless they change.
 
-All demo passwords are `Trial2026!`:
+### 6. Sign in and try a workflow
 
-| Role                   | Email                       |
-| ---------------------- | --------------------------- |
-| Nurse, valid licence   | maria.lopez@example.com     |
-| Nurse, expired licence | james.cook@example.com      |
-| Sunrise agency         | admin@sunrisehealth.example |
-| Metro agency           | admin@metrocare.example     |
-| Administrator          | alex.kim@example.com        |
+All demo accounts use **`Trial2026!`**. These credentials are intentionally public fixtures, not credentials for the developer's GitHub, Vercel or other accounts.
+
+| Role                          | Email                       |
+| ----------------------------- | --------------------------- |
+| Nurse with a valid licence    | maria.lopez@example.com     |
+| Nurse with an expired licence | james.cook@example.com      |
+| Sunrise agency                | admin@sunrisehealth.example |
+| Metro agency                  | admin@metrocare.example     |
+| Administrator                 | alex.kim@example.com        |
+
+Try **Sunrise publishes a shift → Maria claims it → Maria submits worked hours → Sunrise approves → Alex checks the report**. Sign out before switching roles, or use separate browser profiles.
+
+Without external service credentials, shifts, roles, timesheets, reports and audit work locally. Document upload/download needs private Blob storage, emails remain queued, and analytics is disabled. The optional configuration below explains how to enable them. Use synthetic data only.
+
+## Run the tests
+
+Create a separate test database once:
+
+```sh
+docker exec shiftpatch-db createdb -U shiftpatch shiftpatch_test
+```
+
+Add this line to `.env.local`:
+
+```dotenv
+TEST_DATABASE_URL=postgresql://shiftpatch:local-demo-only@127.0.0.1:55433/shiftpatch_test
+```
+
+Then run:
+
+```sh
+npx playwright install chromium
+npm run verify
+npm run test:e2e
+```
+
+`verify` runs lint, types, unit/database tests and the production build. The E2E command needs that build and starts its own server. On Linux, use `npx playwright install --with-deps chromium` if system browser dependencies are missing.
+
+Tests create and remove isolated schemas in the test database. The default E2E run disables real email and blocks external browser traffic. Two real document tests require explicit Blob opt-in and are otherwise skipped. See the verification section below.
+
+## What was built
+
+- Three roles with authentication and server-side permissions.
+- Shift publication, atomic claiming, cancellation and no-show handling.
+- Credential uploads with expiry and administrator approval.
+- Actual worked hours with rejection, correction and approval.
+- Coverage reports, CSV export, audit history and private document ZIPs.
+- Durable email notifications through Resend and explicit PostHog events.
+- Responsive React interface, PostgreSQL persistence and deployment on Vercel.
 
 ## Architecture
 
@@ -83,6 +183,6 @@ Development dependency audit: Vitest was upgraded to remove the critical/moderat
 
 The founder video outline is in [docs/founder-demo.md](docs/founder-demo.md). Export all original AI sessions, including delegated work, without edits using the tool used for those sessions; a generated summary is not a substitute. Keep transcripts out of a public repository if they contain private operational context. The candidate records the Loom and sends the recruiter packet.
 
-The included Vercel Hobby-compatible recovery cron runs daily at 12:00 UTC. When email is configured, successful staffing actions also trigger best-effort processing after the response. Pending deliveries remain durable; on higher-frequency hosting plans the recovery schedule can be shortened. Provider verification is deliberately pending until credentials and a controlled inbox are configured.
+The included Vercel Hobby-compatible recovery cron runs daily at 12:00 UTC. When email is configured, successful staffing actions also trigger best-effort processing after the response. Pending deliveries remain durable; on higher-frequency hosting plans the recovery schedule can be shortened. Email delivery to the controlled inbox and PostHog ingestion were verified; see [email evidence](docs/email-verification.md) and [analytics evidence](docs/posthog-verification.md). External services still require your own credentials in a fresh installation.
 
 Migrations are explicit ordered SQL files in `drizzle/`; the migration runner tracks each filename and serializes execution with a PostgreSQL advisory lock. Schema changes must update both the Drizzle column definitions and a new SQL migration. Do not run schema push or generate a second baseline against the evaluation database.
