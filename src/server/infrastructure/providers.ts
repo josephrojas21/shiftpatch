@@ -59,10 +59,16 @@ export const mail: Mail = {
       (recipient.endsWith('.example') || recipient.endsWith('@example.com'))
     )
       throw new Error('Demo recipient required');
+    // The database worker lock serializes batches across instances. Pace each
+    // attempt (including the first in a batch) to avoid provider rate-limit bursts.
+    await new Promise((resolve) => setTimeout(resolve, 600));
     const result = await new Resend(process.env.RESEND_API_KEY).emails.send(
       { from: process.env.EMAIL_FROM, to: destination, subject, text: body },
       { idempotencyKey: id },
     );
-    if (result.error) throw new Error('Mail delivery failed');
+    if (result.error) {
+      console.error('Email provider rejected request', { code: result.error.name });
+      throw new Error('Mail delivery failed');
+    }
   },
 };
