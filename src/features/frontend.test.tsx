@@ -1,21 +1,24 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Login } from './auth/login';
 import { Shifts } from './shifts/shifts';
 import { WorkspaceProvider } from './shared/workspace';
 import { nextDate, hours, displayDate } from './shared/api';
 import { Credentials } from './credentials/credentials';
+import { Timesheets } from './timesheets/timesheets';
+import type { UserDto } from '@/contracts';
 const nurse = { id: 'nurse-1', name: 'Maria Lopez', role: 'nurse' as const };
-function wrapper(component: React.ReactNode) {
+const agency = { id: 'agency-a', name: 'Sunrise Health Staffing', role: 'agency' as const };
+function wrapper(component: React.ReactNode, user: UserDto = nurse) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <WorkspaceProvider user={nurse}>{component}</WorkspaceProvider>
+      <WorkspaceProvider user={user}>{component}</WorkspaceProvider>
     </QueryClientProvider>,
   );
 }
@@ -37,9 +40,105 @@ const shift = {
 };
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 describe('frontend compatibility and user feedback', () => {
+  it('shows the active assigned nurse to the agency without changing shift fields', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((path: string) =>
+        path === '/api/assignments'
+          ? response({
+              assignments: [
+                {
+                  id: 'old',
+                  shiftId: shift.id,
+                  nurseId: 'nurse-2',
+                  nurseName: 'James Cook',
+                  status: 'cancelled',
+                },
+                {
+                  id: 'current',
+                  shiftId: shift.id,
+                  nurseId: nurse.id,
+                  nurseName: nurse.name,
+                  status: 'active',
+                },
+              ],
+            })
+          : response({ shifts: [{ ...shift, status: 'filled', claimedBy: nurse.id }] }),
+      ),
+    );
+    wrapper(<Shifts />, agency);
+    expect(await screen.findByText('Assigned: Maria Lopez')).toBeVisible();
+    expect(screen.queryByText(/James Cook/)).not.toBeInTheDocument();
+  });
+  it('keeps posting errors inside the open dialog', async () => {
+    Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+      configurable: true,
+      value: function (this: HTMLDialogElement) {
+        this.setAttribute('open', '');
+      },
+    });
+    Object.defineProperty(HTMLDialogElement.prototype, 'close', {
+      configurable: true,
+      value: function (this: HTMLDialogElement) {
+        this.removeAttribute('open');
+      },
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((path: string, init?: RequestInit) => {
+        if (init?.method === 'POST')
+          return response({ error: 'Service temporarily unavailable' }, 503);
+        return path === '/api/assignments'
+          ? response({ assignments: [] })
+          : response({ shifts: [] });
+      }),
+    );
+    wrapper(<Shifts />, agency);
+    fireEvent.click(await screen.findByTestId('agency-post-shift-button'));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Shift date'), {
+      target: { value: '2026-10-22' },
+    });
+    fireEvent.click(within(dialog).getByTestId('agency-post-shift-submit-button'));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Service temporarily unavailable',
+    );
+    expect(dialog).toHaveAttribute('open');
+  });
+  it('explains cancelled timesheets and removes impossible edit and submit actions', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((path: string) =>
+        path === '/api/assignments'
+          ? response({ assignments: [{ id: 'assignment-1', status: 'cancelled' }] })
+          : response({
+              timesheets: [
+                {
+                  id: 'sheet-1',
+                  assignmentId: 'assignment-1',
+                  agencyName: agency.name,
+                  shiftId: shift.id,
+                  startTime: '2026-10-02T19:00',
+                  endTime: '2026-10-03T07:00',
+                  totalMinutes: 720,
+                  breakMinutes: 0,
+                  status: 'draft',
+                  reviewReason: null,
+                },
+              ],
+            }),
+      ),
+    );
+    wrapper(<Timesheets />);
+    expect(await screen.findByText('Assignment cancelled')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Submit' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Record hours' })).toBeDisabled();
+  });
   it('fills demo credentials without signing in automatically', () => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);

@@ -2,7 +2,16 @@
 import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Check, Clock3, Pencil, Plus, Send, X } from 'lucide-react';
-import { Badge, Empty, ErrorState, Field, Modal, Spinner, Submit } from '@/components/ui';
+import {
+  Badge,
+  Empty,
+  ErrorState,
+  Field,
+  FormError,
+  Modal,
+  Spinner,
+  Submit,
+} from '@/components/ui';
 import { testIds, type AssignmentDto, type TimesheetDto } from '@/contracts';
 import { api, displayDate, hours, json, nextDate } from '../shared/api';
 import { track } from '../shared/analytics';
@@ -36,6 +45,9 @@ export function Timesheets() {
     (assignment) =>
       assignment.status === 'active' &&
       !sheets.data?.timesheets.some((sheet) => sheet.assignmentId === assignment.id),
+  );
+  const assignmentStatuses = new Map(
+    (assignments.data?.assignments ?? []).map((a) => [a.id, a.status]),
   );
   return (
     <>
@@ -118,6 +130,9 @@ export function Timesheets() {
                       </td>
                       <td>
                         <Badge status={sheet.status} />
+                        {assignmentStatuses.get(sheet.assignmentId) === 'cancelled' && (
+                          <small>Assignment cancelled</small>
+                        )}
                         {sheet.reviewReason && (
                           <small className="review-reason">{sheet.reviewReason}</small>
                         )}
@@ -125,6 +140,7 @@ export function Timesheets() {
                       <td>
                         <div className="row-actions">
                           {user.role === 'nurse' &&
+                            assignmentStatuses.get(sheet.assignmentId) === 'active' &&
                             ['draft', 'rejected'].includes(sheet.status) && (
                               <>
                                 <button
@@ -292,11 +308,7 @@ function EditTimesheet({
             />
           </Field>
         </div>
-        {localError && (
-          <p className="inline-error" role="alert">
-            {localError}
-          </p>
-        )}
+        <FormError error={localError || save.error} />
         <div className="modal-actions">
           <button type="button" className="button secondary" onClick={onClose}>
             Cancel
@@ -333,6 +345,7 @@ function RejectTimesheet({ sheet, onClose }: { sheet: TimesheetDto; onClose: () 
         <Field label="Reason">
           <textarea name="reason" required minLength={1} maxLength={500} rows={4} />
         </Field>
+        <FormError error={reject.error} />
         <div className="modal-actions">
           <button type="button" className="button secondary" onClick={onClose}>
             Go back

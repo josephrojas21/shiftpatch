@@ -2,7 +2,7 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Check, Download, FileCheck2, FileText, LockKeyhole, Upload, X } from 'lucide-react';
-import { Badge, Empty, ErrorState, Field, Spinner, Submit } from '@/components/ui';
+import { Badge, Empty, ErrorState, Field, FormError, Spinner, Submit } from '@/components/ui';
 import { testIds, type CredentialDto } from '@/contracts';
 import { api, displayDate, json } from '../shared/api';
 import { track } from '../shared/analytics';
@@ -178,11 +178,7 @@ export function Credentials() {
                     data-testid={testIds.credentialUpload}
                   />
                 </Field>
-                {localError && (
-                  <p role="alert" className="inline-error">
-                    {localError}
-                  </p>
-                )}
+                <FormError error={localError || upload.error} />
                 <Submit busy={upload.isPending}>
                   <Upload size={16} />
                   Upload for review

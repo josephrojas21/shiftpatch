@@ -12,8 +12,17 @@ import {
   Search,
   Sun,
 } from 'lucide-react';
-import { Badge, Empty, ErrorState, Field, Modal, Spinner, Submit } from '@/components/ui';
-import { postShiftSchema, testIds, type ShiftDto } from '@/contracts';
+import {
+  Badge,
+  Empty,
+  ErrorState,
+  Field,
+  FormError,
+  Modal,
+  Spinner,
+  Submit,
+} from '@/components/ui';
+import { postShiftSchema, testIds, type ShiftDto, type AssignmentDto } from '@/contracts';
 import { api, displayDate, json } from '../shared/api';
 import { useAction, useWorkspace } from '../shared/workspace';
 import { track } from '../shared/analytics';
@@ -34,6 +43,17 @@ export function Shifts({ mine = false }: { mine?: boolean }) {
     (id: string) => api(`/api/shifts/${id}/claim`, { method: 'POST' }),
     'Shift claimed. You’re on the schedule.',
     () => track('shift_claimed'),
+  );
+  const assignments = useQuery({
+    queryKey: ['assignments', user.id],
+    queryFn: () => api<{ assignments: AssignmentDto[] }>('/api/assignments'),
+    enabled: user.role === 'agency',
+    refetchInterval: 10000,
+  });
+  const activeAssignments = new Map(
+    (assignments.data?.assignments ?? [])
+      .filter((a) => a.status === 'active')
+      .map((a) => [a.shiftId, a]),
   );
   if (query.isPending) return <Spinner label="Finding your shifts…" />;
   if (query.error) return <ErrorState error={query.error} retry={() => void query.refetch()} />;
@@ -112,6 +132,9 @@ export function Shifts({ mine = false }: { mine?: boolean }) {
         </div>
       </div>
       <section className="panel">
+        {assignments.error && (
+          <ErrorState error={assignments.error} retry={() => void assignments.refetch()} />
+        )}
         <div className="panel-title">
           <div>
             <h2>{mine ? 'Your confirmed schedule' : 'Explore shifts'}</h2>
@@ -198,7 +221,11 @@ export function Shifts({ mine = false }: { mine?: boolean }) {
                   (shift.claimedBy === user.id || user.role !== 'nurse') ? (
                   <>
                     <span className="assigned-label">
-                      {shift.claimedBy === user.id ? 'You’re assigned' : 'Nurse assigned'}
+                      {shift.claimedBy === user.id
+                        ? 'You’re assigned'
+                        : activeAssignments.get(shift.id)?.nurseId === shift.claimedBy
+                          ? `Assigned: ${activeAssignments.get(shift.id)!.nurseName}`
+                          : 'Nurse assigned'}
                     </span>
                     <button
                       className="button subtle"
@@ -313,11 +340,7 @@ function PostShift({ onClose }: { onClose: () => void }) {
         <p className="form-help">
           Times are local to the facility. An earlier end time means the shift ends the next day.
         </p>
-        {error && (
-          <p className="inline-error" role="alert">
-            {error}
-          </p>
-        )}
+        <FormError error={error || post.error} />
         <div className="modal-actions">
           <button className="button secondary" type="button" onClick={onClose}>
             Go back
@@ -364,6 +387,7 @@ export function CancelShift({ shift, onClose }: { shift: ShiftDto; onClose: () =
             {user.role !== 'nurse' && <option value="no-show">Nurse did not show up</option>}
           </select>
         </Field>
+        <FormError error={cancel.error} />
         <div className="modal-actions">
           <button type="button" className="button secondary" onClick={onClose}>
             Keep assignment

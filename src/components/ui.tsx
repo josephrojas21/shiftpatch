@@ -52,6 +52,14 @@ export function Badge({ status }: { status: string }) {
     </span>
   );
 }
+export function FormError({ error }: { error?: Error | string | null }) {
+  if (!error) return null;
+  return (
+    <p className="inline-error" role="alert">
+      {typeof error === 'string' ? error : error.message}
+    </p>
+  );
+}
 export function Modal({
   title,
   description,
