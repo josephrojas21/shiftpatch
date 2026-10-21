@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixtures';
 async function signIn(page: Page, email: string) {
   await page.goto('/');
   await page.getByTestId('login-email-input').fill(email);
@@ -98,4 +98,123 @@ test('mobile navigation and layout remain usable', async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );
+});
+
+test('rejected hours can be corrected, resubmitted and reflected in filtered reports', async ({
+  page,
+  request,
+}) => {
+  async function token(email: string) {
+    const response = await request.post('/api/auth/login', {
+      data: { email, password: 'Trial2026!' },
+    });
+    expect(response.status()).toBe(200);
+    return (await response.json()).token as string;
+  }
+  const agencyToken = await token('admin@sunrisehealth.example');
+  const nurseToken = await token('maria.lopez@example.com');
+  const headers = { Authorization: `Bearer ${agencyToken}` };
+  const nurseHeaders = { Authorization: `Bearer ${nurseToken}` };
+  await page.context().clearCookies();
+  const created = await request.post('/api/shifts', {
+    headers,
+    data: { role: 'RN', date: '2026-11-20', startTime: '19:00', endTime: '07:00' },
+  });
+  expect(created.status()).toBe(201);
+  const shift = await created.json();
+  expect(
+    (await request.post(`/api/shifts/${shift.id}/claim`, { headers: nurseHeaders })).status(),
+  ).toBe(200);
+  await signIn(page, 'maria.lopez@example.com');
+  await page.getByRole('button', { name: 'Timesheets', exact: true }).click();
+  await page.getByRole('button', { name: 'Record hours', exact: true }).click();
+  const assignments = await request.get('/api/assignments', { headers: nurseHeaders });
+  const assignment = (await assignments.json()).assignments.find(
+    (a: { shiftId: string }) => a.shiftId === shift.id,
+  );
+  await page.getByRole('dialog').getByRole('combobox').selectOption(assignment.id);
+  await page.getByLabel('Actual end', { exact: true }).fill('2026-11-22T07:00');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Timesheet must span');
+  await page.getByLabel('Actual end', { exact: true }).fill('2026-11-21T07:00');
+  await page.getByLabel('Unpaid break (minutes)').fill('30');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  const row = page.getByRole('row').filter({ hasText: shift.id });
+  await row.getByRole('button', { name: 'Submit', exact: true }).click();
+  await expect(row).toContainText('Submitted');
+  await signOut(page);
+  await signIn(page, 'admin@sunrisehealth.example');
+  await page.getByRole('button', { name: 'Timesheets', exact: true }).click();
+  const submitted = page
+    .getByRole('row')
+    .filter({ has: page.getByRole('button', { name: 'Reject', exact: true }) });
+  await submitted.getByRole('button', { name: 'Reject', exact: true }).click();
+  await page.getByLabel('Reason', { exact: true }).fill('Please include the full one-hour break.');
+  await page.getByRole('button', { name: 'Return timesheet', exact: true }).click();
+  await expect(page.getByTestId('notification-banner')).toContainText('returned');
+  await signOut(page);
+  await signIn(page, 'maria.lopez@example.com');
+  await page.getByRole('button', { name: 'Timesheets', exact: true }).click();
+  await expect(row).toContainText('Please include the full one-hour break.');
+  await row.getByRole('button', { name: 'Edit', exact: true }).click();
+  await page.getByLabel('Unpaid break (minutes)').fill('60');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await expect(row).toContainText('11h 0m');
+  await row.getByRole('button', { name: 'Submit', exact: true }).click();
+  await expect(row).toContainText('Submitted');
+  await signOut(page);
+  await signIn(page, 'admin@sunrisehealth.example');
+  await page.getByRole('button', { name: 'Timesheets', exact: true }).click();
+  await page.getByRole('button', { name: 'Approve', exact: true }).click();
+  await expect(page.getByTestId('notification-banner')).toContainText('approved');
+
+  const reopened = await request.post('/api/shifts', {
+    headers,
+    data: { role: 'LPN', date: '2026-11-20', startTime: '07:00', endTime: '19:00' },
+  });
+  const second = await reopened.json();
+  expect(
+    (await request.post(`/api/shifts/${second.id}/claim`, { headers: nurseHeaders })).status(),
+  ).toBe(200);
+  expect(
+    (
+      await request.post(`/api/shifts/${second.id}/cancel`, {
+        headers,
+        data: { reason: 'no-show' },
+      })
+    ).status(),
+  ).toBe(200);
+  await signOut(page);
+  await signIn(page, 'alex.kim@example.com');
+  await page.getByRole('combobox', { name: /^Agency/ }).selectOption('agency-a');
+  await page.getByLabel('From date', { exact: true }).fill('2026-11-20');
+  await page.getByLabel('To date', { exact: true }).fill('2026-11-20');
+  await expect(page.getByTestId('admin-dashboard-shift-table').locator('tbody tr')).toHaveCount(2);
+  const adminToken = await token('alex.kim@example.com');
+  const query = 'agencyId=agency-a&from=2026-11-20&to=2026-11-20';
+  const report = await request.get(`/api/admin/report?${query}`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  });
+  expect(await report.json()).toMatchObject({
+    open: 1,
+    filled: 1,
+    cancellations: 1,
+    noShows: 1,
+    approvedMinutes: 660,
+    coverageRate: 50,
+  });
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('link', { name: 'Export CSV' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('shiftpatch-report.csv');
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream!) chunks.push(Buffer.from(chunk));
+  const csv = Buffer.concat(chunks).toString();
+  expect(csv.split('\r\n')).toHaveLength(3);
+  expect(csv).toContain(shift.id);
+  expect(csv).toContain(second.id);
+  expect(csv).not.toContain('Metro Care Partners');
+  await page.getByRole('combobox', { name: /^Agency/ }).selectOption('agency-b');
+  await expect(page.getByTestId('admin-dashboard-shift-table').locator('tbody tr')).toHaveCount(0);
 });

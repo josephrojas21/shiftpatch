@@ -1,4 +1,4 @@
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect, type APIRequestContext } from './fixtures';
 // These literal expectations intentionally do not import production schemas/fixtures.
 const baseKeys = [
   'id',

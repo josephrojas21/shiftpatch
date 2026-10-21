@@ -16,8 +16,16 @@ const portProbe = createServer();
 await new Promise<void>((resolve) => portProbe.listen(0, '127.0.0.1', resolve));
 const testPort = (portProbe.address() as import('node:net').AddressInfo).port;
 await new Promise<void>((resolve) => portProbe.close(() => resolve()));
+const useRealBlob = process.env.E2E_REAL_BLOB === '1';
+if (useRealBlob && !process.env.BLOB_READ_WRITE_TOKEN)
+  throw new Error('E2E_REAL_BLOB=1 requires a private Blob test token.');
 const env = {
   ...process.env,
+  RESEND_API_KEY: '',
+  EMAIL_FROM: '',
+  DEMO_EMAIL_TO: '',
+  NEXT_PUBLIC_POSTHOG_KEY: '',
+  BLOB_READ_WRITE_TOKEN: useRealBlob ? process.env.BLOB_READ_WRITE_TOKEN! : '',
   DATABASE_URL: url.toString(),
   DATABASE_URL_UNPOOLED: url.toString(),
   AUTH_SECRET: 'isolated-e2e-secret-' + randomBytes(32).toString('hex'),
@@ -43,7 +51,7 @@ try {
   process.exitCode = 1;
 } finally {
   try {
-    if (process.env.BLOB_READ_WRITE_TOKEN) {
+    if (useRealBlob) {
       const result = await pool.query(
         `SELECT storage_key FROM "${schema}".credentials WHERE storage_key IS NOT NULL`,
       );

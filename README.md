@@ -73,6 +73,10 @@ The E2E runner creates a fresh random schema in TEST_DATABASE_URL, migrates and 
 
 CI runs migrations, seed, lint/boundaries, types, unit/database tests, build, Playwright and production dependency audit against a PostgreSQL service. Passing CI must be verified on the actual remote run.
 
+The E2E runner disables Resend credentials and blocks external browser requests, including PostHog calls embedded in a prior build. Real private document tests are opt-in: run `E2E_REAL_BLOB=1 npm run test:e2e` with a private Blob test token. Those tests upload synthetic files and delete their objects afterward. Without opt-in, document-provider tests are explicitly skipped.
+
+Development dependency audit: Vitest was upgraded to remove the critical/moderate test-runner advisories, and unused form libraries and Drizzle Kit were removed. Migrations continue through the explicit SQL runner. Five high-severity dependency entries remain in the single `eslint-config-next → @next/eslint-plugin-next → fast-glob → micromatch → braces` chain. As of 2026-10-21, the registry's latest `braces` is still 3.0.3, affected by GHSA-vfj7-8cjw-p6xm (nested-pattern stack exhaustion). These are development lint dependencies; the production audit is clean. Do not apply `npm audit fix --force`: its proposed Next ESLint downgrade is not a compatible remediation. Recheck upstream releases before final delivery.
+
 ## Agent workflow and handoff
 
 [AGENTS.md](AGENTS.md) is the actual working agreement. Frontend and backend agents work in separate directories after contracts are agreed. Coordinator integrates, checks independent tests and owns deployment. Changes to shared contracts require coordination.

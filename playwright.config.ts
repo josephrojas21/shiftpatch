@@ -9,7 +9,11 @@ export default defineConfig({
   workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: [['list'], ['html', { open: 'never' }]],
-  use: { baseURL: process.env.BASE_URL || baseURL, trace: 'retain-on-failure' },
+  use: {
+    baseURL: process.env.BASE_URL || baseURL,
+    trace: 'retain-on-failure',
+    serviceWorkers: 'block',
+  },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: process.env.BASE_URL
     ? undefined
