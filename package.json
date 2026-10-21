@@ -20,7 +20,6 @@
     "api:docs": "node --import tsx scripts/openapi.ts"
   },
   "dependencies": {
-    "@hookform/resolvers": "^5.2.0",
     "@tanstack/react-query": "^5.90.0",
     "@vercel/blob": "^2.8.2",
     "@vercel/functions": "^3.0.0",
@@ -34,7 +33,6 @@
     "posthog-js": "^1.280.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-hook-form": "^7.65.0",
     "resend": "^6.0.0",
     "zod": "^4.0.0"
   },
@@ -50,14 +48,13 @@
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^4.7.0",
     "dotenv": "^17.2.0",
-    "drizzle-kit": "^0.31.0",
     "eslint": "^9.0.0",
     "eslint-config-next": "^16.0.0",
     "jsdom": "^26.0.0",
     "prettier": "^3.9.10",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
-    "vitest": "^3.2.0"
+    "vitest": "^4.1.12"
   },
   "type": "module"
 }
