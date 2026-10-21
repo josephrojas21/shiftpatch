@@ -69,7 +69,7 @@ npm run test:e2e
 
 Set `TEST_DATABASE_URL` to a dedicated PostgreSQL database for integration tests. They use an isolated schema, and drop only that test schema. Unit tests alone do not prove PostgreSQL concurrency.
 
-The E2E runner creates a fresh random schema in TEST_DATABASE_URL, migrates and seeds it, starts the production build on port 3000, and removes only that schema afterward. It refuses remote BASE_URL targets and existing servers. E2E tests never reset the public evaluation data. The API contract suite contains literal expectations independent of production DTOs. Browser tests cover the three roles, expired credentials, cancellation, timesheet approval, report/export controls and mobile navigation.
+The E2E runner creates a fresh random schema in TEST_DATABASE_URL, migrates and seeds it, starts the production build on an available local port, and removes only that schema afterward. It refuses remote BASE_URL targets and existing servers. E2E tests never reset the public evaluation data. The API contract suite contains literal expectations independent of production DTOs. Browser tests cover the three roles, expired credentials, cancellation, timesheet approval, report/export controls and mobile navigation.
 
 CI runs migrations, seed, lint/boundaries, types, unit/database tests, build, Playwright and production dependency audit against a PostgreSQL service. Passing CI must be verified on the actual remote run.
 
