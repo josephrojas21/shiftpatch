@@ -9,3 +9,4 @@
 - Tests of compatibility must contain independent literal expectations, not only reuse production schemas.
 - Run relevant tests after each task; final gate: npm run verify and npm run test:e2e. Report actual command outcomes and blocked checks honestly.
 - Use npm and package-lock.json; only coordinator changes dependencies.
+- Commit changes in small, coherent functional batches with descriptive messages so implementation progress is visible. Do not combine unrelated work into one large commit. Preserve published history unless the user explicitly requests a rewrite.
